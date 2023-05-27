@@ -59,6 +59,9 @@ module overmind::pay_me_a_river {
     }
 
     public fun calculate_stream_claim_amount(total_amount: u64, start_time: u64, length_in_seconds: u64): u64 {
+        if (total_amount == 0 || length_in_seconds == 0) {
+            return 0
+        };
         total_amount / length_in_seconds * (timestamp::now_seconds() - start_time)
     }
 
@@ -68,7 +71,6 @@ module overmind::pay_me_a_river {
         amount: u64,
         length_in_seconds: u64
     ) acquires Payments {
-        
         let account_addr = signer::address_of(signer);
         check_sender_is_not_receiver(account_addr, receiver_address);
        
@@ -103,7 +105,7 @@ module overmind::pay_me_a_river {
                 start_time: 0,
                 coins: coins
             };
-                table::add(&mut payments.streams, receiver_address, stream);
+            table::add(&mut payments.streams, receiver_address, stream);
         }
     }
 
@@ -112,7 +114,7 @@ module overmind::pay_me_a_river {
         check_payment_exists(sender_address);
         let receiver_address = signer::address_of(signer);
         check_stream_exists(payments, receiver_address);
-        // check_stream_is_not_active(payments, receiver_address);
+        check_stream_is_not_active(payments, receiver_address);
         let stream: &mut Stream = table::borrow_mut(&mut payments.streams, receiver_address);
         stream.start_time = timestamp::now_seconds();
     }
@@ -126,15 +128,22 @@ module overmind::pay_me_a_river {
         let amount = calculate_stream_claim_amount(value, start_time, period_in_seconds);
         
         let payments = borrow_global_mut<Payments>(sender_address);
-        let new_len = table::borrow(&payments.streams, receiver_address).length_in_seconds - (timestamp::now_seconds() - table::borrow(&payments.streams, receiver_address).start_time);
+        
+        let length_in_seconds = table::borrow(&payments.streams, receiver_address).length_in_seconds;
+        let start_time = table::borrow(&payments.streams, receiver_address).start_time;
+        
         let stream = table::borrow_mut(&mut payments.streams, receiver_address);
-        check_number_is_valid(stream.start_time);
-      
-        stream.length_in_seconds = new_len;
-        stream.start_time = timestamp::now_seconds();
-
-        let coins = coin::extract(&mut stream.coins, amount);
-        coin::deposit<AptosCoin>(receiver_address, coins);
+        if (length_in_seconds > (timestamp::now_seconds() - start_time)) {
+            stream.length_in_seconds = length_in_seconds - timestamp::now_seconds() + start_time;
+            stream.start_time = timestamp::now_seconds();
+            let coins = coin::extract(&mut stream.coins, amount);
+            coin::deposit<AptosCoin>(receiver_address, coins);  
+        } else {
+            stream.length_in_seconds = 0;
+            stream.start_time = 0;
+            let coins = coin::extract_all(&mut stream.coins);
+            coin::deposit<AptosCoin>(receiver_address, coins);
+        };
     }
 
     public entry fun cancel_stream(
@@ -162,7 +171,7 @@ module overmind::pay_me_a_river {
             let coins = coin::extract_all(&mut coins);
             coin::deposit<AptosCoin>(sender_address, coins);
         };
-         coin::destroy_zero<AptosCoin>(coins);
+        coin::destroy_zero<AptosCoin>(coins);
     }
 
     #[view]
