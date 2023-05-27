@@ -47,7 +47,7 @@ module overmind::pay_me_a_river {
 
     public fun check_stream_is_not_active(payments: &Payments, stream_address: address) {
         let number = table::borrow(&payments.streams, stream_address).start_time;
-        assert!(number > 0, ESTREAM_IS_ACTIVE)
+        assert!(number == 0, ESTREAM_IS_ACTIVE)
     }
 
     public fun check_signer_address_is_sender_or_receiver(
@@ -124,6 +124,7 @@ module overmind::pay_me_a_river {
         check_payment_exists(sender_address);
         let payments = borrow_global_mut<Payments>(sender_address);
         check_stream_exists(payments, receiver_address);
+
         let (period_in_seconds, start_time, value) = get_stream(sender_address, receiver_address);
         let amount = calculate_stream_claim_amount(value, start_time, period_in_seconds);
         
